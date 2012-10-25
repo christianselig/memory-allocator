@@ -28,7 +28,7 @@
 #define PDPE64_INDEX(x) ((((u64)x) >> 30) & 0x1ff)
 #define PDE64_INDEX(x) ((((u64)x) >> 21) & 0x1ff)
 #define PTE64_INDEX(x) ((((u64)x) >> 12) & 0x1ff)
-
+#define PHYSICAL_OFFSET(x) (((u64)x) & 0xfff)
 
 /* Gets the base address needed for a Page Table entry */
 #define PAGE_TO_BASE_ADDR(x) ((x) >> 12)
@@ -144,7 +144,7 @@ typedef struct pdpe32pae {
     u64 rsvd          : 2; // MBZ
     u64 write_through : 1;
     u64 cache_disable : 1;
-    u64 accessed      : 1; 
+    u64 accessed      : 1;
     u64 avail         : 1;
     u64 rsvd2         : 2;  // MBZ
     u64 vmm_info      : 3;

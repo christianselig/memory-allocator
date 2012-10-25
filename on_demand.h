@@ -14,7 +14,6 @@
 struct vaddr_reg {
    /* You can use this to demarcate virtual address allocations */
 	u8 status;
-    u8 physical;
 	u64 size;
 	u64 page_addr;
 	struct list_head list;
@@ -24,6 +23,7 @@ struct mem_map {
    /* Add your own state here */
 	struct list_head memory_allocations;
 };
+
 
 
 
@@ -39,6 +39,8 @@ void petmem_dump_vspace(struct mem_map * map);
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code);
 void print_bits(u64* num);
 void free_address(struct list_head * head_list, u64 page);
-
+void attempt_free_physical_address(uintptr_t address);
+int is_entire_page_free(void * page_structure);
+int check_address_range(struct mem_map * map, uintptr_t address);
 uintptr_t allocate(struct list_head * head_list, u64 size);
 #endif

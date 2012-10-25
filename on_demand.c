@@ -9,6 +9,13 @@
 #include "pgtables.h"
 #include "swap.h"
 
+#define PHYSICAL_OFFSET(x) (((u64)x) & 0xfff)
+#define PAGE_IN_USE 1
+#define PAGE_NOT_IN_USE 2
+#define ERROR_PERMISSION 2
+#define NOT_VALID_RANGE 1
+#define ALLOCATED_ADDRESS_RANGE 2
+
 struct mem_map * petmem_init_process(void) {
 	struct mem_map * new_proc;
 	struct vaddr_reg * first_node = (struct vaddr_reg *) kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
@@ -29,6 +36,7 @@ void petmem_deinit_process(struct mem_map * map) {
 	struct vaddr_reg *entry;
 	list_for_each_safe(pos, next, &(map->memory_allocations)){
 		entry = list_entry(pos, struct vaddr_reg, list);
+        attempt_free_physical_address(entry->page_addr);
 		list_del(pos);
 		kfree(entry);
 	}
@@ -66,15 +74,11 @@ void petmem_free_pspace(uintptr_t vaddr){
  * all types of 64, but there is no general one.
  */
 void handle_table_memory(void * mem){
-    int i;
     uintptr_t temp;
     pte64_t * handle = (pte64_t *)mem;
 	temp = (uintptr_t)__va(petmem_alloc_pages(1));
     printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
-	for(i = 0; i < 512; i++) {
-		memcpy((void *)temp + (i * 8), handle, 8);
-	}
-    //screw it, other way didn't copy permissions, must set them!
+   //screw it, other way didn't copy permissions, must set them!
     memset((void *)temp, 0, 512*8);
 	handle->present = 1;
 	handle->page_base_addr = PAGE_TO_BASE_ADDR( __pa(temp ));
@@ -85,6 +89,12 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 	pdpe64_t * pdp;
 	pde64_t * pde;
 	pte64_t * pte;
+
+    int valid_range = check_address_range(map, fault_addr);
+    if(valid_range == NOT_VALID_RANGE|| error_code == ERROR_PERMISSION ){
+        return -1;
+    }
+
     cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( fault_addr ) * 8);
     if(!cr3->present) {
         handle_table_memory((void *)cr3);
@@ -149,6 +159,86 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 }
 
 
+void attempt_free_physical_address(uintptr_t address){
+ 	pml4e64_t * cr3;
+	pdpe64_t * pdp, *pdp_table;
+	pde64_t * pde, *pde_table;
+	pte64_t * pte, *pte_table;
+    void * actual_mem;
+    /* If one of them isn't there, we don't need to free any physical address because there is none.*/
+    cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( address ) * 8);
+    if(!cr3->present) {
+        return;
+    }
+    pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( address ) * 8)) ;
+    pdp_table = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr )) ;
+    if(!pdp->present) {
+        return;
+    }
+
+    pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( address )* 8);
+    pde_table = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ));
+    if(!pde->present) {
+        return;
+    }
+
+    pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( address ) * 8 );
+    pte_table = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ));
+    if(!pte->present) {
+        return;
+    }
+
+    actual_mem = (void *)__va( BASE_TO_PAGE_ADDR( pte->page_base_addr ) + PHYSICAL_OFFSET( address ) );
+    petmem_free_pages((uintptr_t)actual_mem, 1);
+    // Chain free this stuff.
+    pte->writable = 0;
+    pte->user_page = 0;
+    pte->present = 0;
+    pte->page_base_addr = 0;
+    if(is_entire_page_free((void *)pte_table) == PAGE_NOT_IN_USE){
+       petmem_free_pages((uintptr_t)pte_table, 1);
+    }
+    else{
+        return;
+    }
+    pde->writable = 0;
+    pde->user_page = 0;
+    pde->present = 0;
+    pde->pt_base_addr = 0;
+    if(is_entire_page_free((void *)pde_table) == PAGE_NOT_IN_USE){
+       petmem_free_pages((uintptr_t)pde_table, 1);
+    }
+    else{
+        return;
+    }
+    pdp->writable = 0;
+    pdp->user_page = 0;
+    pdp->present = 0;
+    pdp->pd_base_addr = 0;
+    if(is_entire_page_free((void *)pdp_table) == PAGE_NOT_IN_USE){
+       petmem_free_pages((uintptr_t)pdp_table, 1);
+    }
+    else{
+        return;
+    }
+    cr3->present = 0;
+    cr3->pdp_base_addr = 0;
+    cr3->user_page = 0;
+    cr3->writable = 0;
+
+}
+int is_entire_page_free(void * page_structure){
+    int i = 0;
+    for(i = 0; i < 512; i++){
+        int offset = i * 8;
+        pte64_t * page = (page_structure + offset);
+        if(page->present == 1){
+            return PAGE_IN_USE;
+        }
+    }
+    return PAGE_NOT_IN_USE;
+}
+
 void free_address(struct list_head * head_list, u64 page){
 	struct vaddr_reg * cur, * found, *next, *prev;
 	found = NULL;
@@ -161,7 +251,7 @@ void free_address(struct list_head * head_list, u64 page){
 		return;
 	}
 	//TODO: Remove actually allocated pages here.
-
+    attempt_free_physical_address(found->page_addr);
 	//Set the clear values.
 	found->status = FREE;
 
@@ -224,4 +314,14 @@ void print_bits(u64 * num){
         printk("%1d", (int)((*num) & current_bit) >> (i));
         current_bit = current_bit << 1;
     }
+}
+int check_address_range(struct mem_map * map, uintptr_t address){
+ 	struct vaddr_reg * cur;
+	list_for_each_entry(cur, &(map->memory_allocations), list){
+        if(cur->status == ALLOCATED && address >= cur->page_addr && address < (cur->page_addr + 4096 * cur->size)){
+            return ALLOCATED_ADDRESS_RANGE;
+        }
+	}
+    return NOT_VALID_RANGE;
+
 }
