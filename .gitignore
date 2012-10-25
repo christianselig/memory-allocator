@@ -5,3 +5,7 @@ cmake_install.cmake
 install_manifest.txt
 *.o
 *.cmd
+Module.symvers
+*.ko
+.tmp_versions/*
+modules.order

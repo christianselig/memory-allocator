@@ -9,150 +9,47 @@
 #include "pgtables.h"
 #include "swap.h"
 
-int debug = 0;
-
 struct mem_map * petmem_init_process(void) {
-	struct mem_map *map = (struct mem_map *)kmalloc(sizeof(struct mem_map), GFP_KERNEL);
-	struct vaddr_reg *new;
-	if(!map) {
-		printk("--> petmem_init_process: Could not kmalloc the memory map!\n");
-		return NULL;
-	}
-	map->memory = (struct vaddr_reg *)kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
-	if(!map->memory) {
-		printk("--> petmem_init_process: Could not kmalloc the beginning pointer!\n");
-		return NULL;
-	}
-	INIT_LIST_HEAD(&map->memory->list);
-	map->memory->start = 0;
-	map->memory->length = 0;
-	map->memory->free = 0;
+	struct mem_map * new_proc;
+	struct vaddr_reg * first_node = (struct vaddr_reg *) kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
+	new_proc = (struct mem_map *)kmalloc(sizeof(struct mem_map), GFP_KERNEL);
+	INIT_LIST_HEAD(&(new_proc->memory_allocations));
+	first_node->status = FREE;
+	first_node->size = ((PETMEM_REGION_END - PETMEM_REGION_START) >> PAGE_POWER_4KB);
+	first_node->page_addr = PETMEM_REGION_START;
 
-	new = (struct vaddr_reg *)kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
-	if(!new) {
-		printk("--> petmem_init_process: Could not kmalloc the first node!\n");
-		return NULL;
-	}
-	INIT_LIST_HEAD(&(new->list));
-	new->start = PETMEM_REGION_START;
-	new->length = PETMEM_REGION_END - PETMEM_REGION_START;
-	new->free= 1;
+	INIT_LIST_HEAD(&(first_node->list));
+	list_add(&(first_node->list), &(new_proc->memory_allocations));
+    return new_proc;
 
-	list_add(&(new->list), &(map->memory->list));
-	/*map->memory->start = PETMEM_REGION_START;
-	map->memory->length = PETMEM_REGION_END - PETMEM_REGION_START;
-	map->memory->free = 1;
-	//printk("--> petmem_init_process: Validating = Start: %lld Length: %lld Free: %d\n", map->memory->start, map->memory->length, map->memory->free);*/
-	if(debug > 1000) {
-		printk("--> petmem_init_process: Init complete!\n");
-	}
-	return map;
 }
 
 void petmem_deinit_process(struct mem_map * map) {
+	struct list_head * pos, * next;
+	struct vaddr_reg *entry;
+	list_for_each_safe(pos, next, &(map->memory_allocations)){
+		entry = list_entry(pos, struct vaddr_reg, list);
+		list_del(pos);
+		kfree(entry);
+	}
+	kfree(map);
 
 }
 
 uintptr_t petmem_alloc_vspace(struct mem_map * map, u64 num_pages) {
-	struct list_head *ptr;
-	struct vaddr_reg *entry;
-	struct vaddr_reg *new;
-	uintptr_t address = 0;
-
-	//	We allocate in 4KB chunks
-	num_pages = num_pages * PAGE_SIZE_4KB;
-
-	printk("Memory al for %lld pages\n", num_pages);
-
-	//	Start searching for free pages at the beginning of the
-	//	memory map. If we can't find any free space... well...
-	list_for_each(ptr, &(map->memory->list)) {
-		entry = list_entry(ptr, struct vaddr_reg, list);
-		//	Check if the node is free
-		if(debug > 100) {
-			printk("--> Checking = Start: %lld, Length: %lld, Free: %d\n", entry->start, entry->length, entry->free);
-		}
-		if(entry->free) {
-			//	We got lucky!
-			if(entry->length == num_pages) {
-				if(debug > 100) {
-					printk("--> petmem_alloc_vspace: Found free entry of exact length!\n");
-				}
-				entry->free = 0;
-				address = entry->start;
-				break;
-			}
-			//	Check if we have enough free space...
-			if(entry->length > num_pages) {
-				if(debug > 100) {
-					printk("--> petmem_alloc_vspace: Broke up free entry to handle request!\n");
-				}
-				//	We need to break up the free space
-				new = kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
-				//	We can't really do anything if it can't be malloced... so don't bother checking...
-				INIT_LIST_HEAD(&(new->list));
-				new->start = entry->start + num_pages;
-				new->length = entry->length - num_pages;
-				new->free = 1;
-				list_add(&(new->list), &(entry->list));
-
-				entry->length = num_pages;
-				entry->free = 0;
-
-				if(debug > 100) {
-					printk("--> petmem_alloc_vspace: New node stats = Start: %lld, Length: %lld, Free: %d\n", entry->start, entry->length, entry->free);
-					printk("--> petmem_alloc_vspace: New free node stats = Start: %lld, Length: %lld, Free: %d\n", new->start, new->length, new->free);
-				}
-				address = entry->start;
-				break;
-			}
-		}
-	}
-	printk("--> petmem_alloc_vspace: Returning address %lx\n", address);
-	return address;
+    printk("Memory allocation\n");
+    return allocate(&(map->memory_allocations), num_pages);
 }
 
 void petmem_dump_vspace(struct mem_map * map) {
-	struct list_head *ptr;
-	struct vaddr_reg *entry;
-	printk("--> petmem_dump_vspace: Calling dump...\n");
-	list_for_each(ptr, &(map->memory->list)) {
-		entry = list_entry(ptr, struct vaddr_reg, list);
-		printk("--> petmem_dump_vspace: Start - %lld, Length - %lld, Free - %d\n", entry->start, entry->length, entry->free);
-	}
-	return;
 }
 
 // Only the PML needs to stay, everything else can be freed
 void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
-	struct list_head *ptr;
-	struct vaddr_reg *entry;
-	struct vaddr_reg *next_entry;
-	struct vaddr_reg *prev_entry;
+    printk("Free memory\n");
+	free_address(&(map->memory_allocations), vaddr);
+    return;
 
-	printk("Attempting to free address %lx\n", vaddr);
-
-	list_for_each(ptr, &(map->memory->list)) {
-		entry = list_entry(ptr, struct vaddr_reg, list);
-		if(entry->start == vaddr) {
-			//	We have found the address to free!
-			entry->free = 1;
-			next_entry = list_entry(ptr->next, struct vaddr_reg, list);
-			if(next_entry->free) {
-				entry->length = next_entry->length + entry->length;
-				list_del(&(next_entry->list));
-				kfree(next_entry);
-			}
-			prev_entry = list_entry(ptr->prev, struct vaddr_reg, list);
-			if(prev_entry->free) {
-				prev_entry->length = prev_entry->length + entry->length;
-				list_del(&(entry->list));
-				kfree(entry);
-			}
-		}
-	}
-	printk("--> petmem_free_space: Memory freed!");
-	return;
 }
 
 /*
@@ -179,86 +76,144 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 	pdpe64_t * pdp;
 	pde64_t * pde;
 	pte64_t * pte;
-	u64 start, end, alloc_addr;
-	int i;
-	struct list_head *ptr;
-	struct vaddr_reg *entry;
-	struct vaddr_reg *next;
+    uintptr_t alloc_addr;
     printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
     printk("Error code: %d\n", error_code);
 	printk("Fault Address 0x%012lx\n", fault_addr);
-
-	//	Find the virtual entry
-	list_for_each(ptr, &(map->memory->list)) {
-		entry = list_entry(ptr, struct vaddr_reg, list);
-		next = list_entry(ptr->next, struct vaddr_reg, list);
-		if(debug > 10) {
-			printk("Comparing = Start: %lld, Next: %lld, Address: %lx\n", entry->start, next->start, fault_addr);
-		}
-		if(entry->start <= fault_addr && next->start > fault_addr) {
-			//	Found the entry!
-			break;
-		}
-	}
-	start = entry->start;
-	end = start + entry->length;
-
-	if(debug > 10) {
-		printk("--> petmem_handle_pagefault: Found node stats = Start: %lld, Length: %lld, Free: %d\n", entry->start, entry->length, entry->free);
-		printk("Start: %lld, End: %lld\n", start, end);
-	}
 
     alloc_addr = fault_addr;
     cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( alloc_addr ) * 8);
     printk("\nCR3 FULL SUMMARY:\n");
     printk("PML4 offset: %lld\n", PML4E64_INDEX(alloc_addr));
-    printk("PML4 index: %lld (0x%03x)\n", PML4E64_INDEX(alloc_addr) * 8, PML4E64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012lx\n", (CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( alloc_addr) * 8));
-    printk("Virtual Address: 0x%012lx\n", cr3);
+    printk("PML4 index: %lld (0x%03x)\n", PML4E64_INDEX(alloc_addr) * 8, (int)PML4E64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( alloc_addr) * 8));
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)cr3);
     if(!cr3->present) {
         printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *)cr3);
     }
-    printk("Page address to next level from cr3 : 0x%012lx\n", cr3->pdp_base_addr);
+    printk("Page address to next level from cr3 : 0x%012lx\n", (long unsigned int)cr3->pdp_base_addr);
     printk("\nPDP FULL SUMMARY:\n");
     printk("PDP offset: %lld\n", PDPE64_INDEX(alloc_addr));
-    printk("PDP index: %lld (0x%03x)\n", PDPE64_INDEX(alloc_addr) * 8, PDPE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(cr3->pdp_base_addr) + PDPE64_INDEX( alloc_addr) * 8));
+    printk("PDP index: %lld (0x%03x)\n", PDPE64_INDEX(alloc_addr) * 8, (int)PDPE64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(cr3->pdp_base_addr) + PDPE64_INDEX( alloc_addr) * 8));
     pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( alloc_addr ) * 8)) ;
-    printk("Virtual Address: 0x%012lx\n", pdp);
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pdp);
     if(!pdp->present) {
         printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *) pdp);
         pdp->present = 1;
     }
-    printk("Page address to next level from pdp : 0x%012lx\n", pdp->pd_base_addr);
+    printk("Page address to next level from pdp : 0x%012lx\n", (long unsigned int)pdp->pd_base_addr);
     printk("\nPDE FULL SUMMARY:\n");
     printk("PDE offset: %lld\n", PDE64_INDEX(alloc_addr));
-    printk("PDE index: %lld (0x%03x)\n", PDE64_INDEX(alloc_addr) * 8, PDE64_INDEX(alloc_addr) * 8);
+    printk("PDE index: %lld (0x%03x)\n", PDE64_INDEX(alloc_addr) * 8, (int)PDE64_INDEX(alloc_addr) * 8);
 
 
     printk("Hmmm...what is the PDE index? %lld\n", PDE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(pdp->pd_base_addr) + PDE64_INDEX( alloc_addr) * 8));
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pdp->pd_base_addr) + PDE64_INDEX( alloc_addr) * 8));
     pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( alloc_addr )* 8);
-    printk("Virtual Address: 0x%012lx\n", pde);
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pde);
     if(!pde->present) {
         printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *) pde);
         pde->present = 1;
     }
 
-    printk("Page address to next level from pde : 0x%012lx\n", pde->pt_base_addr);
+    printk("Page address to next level from pde : 0x%012lx\n", (long unsigned int)pde->pt_base_addr);
     printk("\nPTE FULL SUMMARY:\n");
     printk("PTE offset: %lld\n", PTE64_INDEX(alloc_addr));
-    printk("PTE index: %lld (0x%03x)\n", PTE64_INDEX(alloc_addr) * 8, PTE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(pde->pt_base_addr) + PTE64_INDEX( alloc_addr) * 8));
+    printk("PTE index: %lld (0x%03x)\n", PTE64_INDEX(alloc_addr) * 8, (int)PTE64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pde->pt_base_addr) + PTE64_INDEX( alloc_addr) * 8));
     pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( alloc_addr ) * 8 );
-    printk("Virtual Address: 0x%012lx\n", pte);
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pte);
     if(!pte->present) {
         printk("Can't find the allocated! Allocating space now...\n");
         handle_table_memory((void *) pte);
         pte->present = 1;
     }
-    printk("Memory at this : 0x%012lx\n", pte->page_base_addr);
+    pte->writable = 1;
+    printk("Bits set...");
+    print_bits((u64 *)(pte));
+
+    printk("Memory at this : 0x%012lx\n", (long unsigned int)pte->page_base_addr);
     return 0;
+}
+
+
+void free_address(struct list_head * head_list, u64 page){
+	struct vaddr_reg * cur, * found, *next, *prev;
+	found = NULL;
+	list_for_each_entry(cur ,head_list, list){
+		if(cur->page_addr == page){
+		    found = cur;
+        }
+	}
+	if(found == NULL){
+		return;
+	}
+	//TODO: Remove actually allocated pages here.
+
+	//Set the clear values.
+	found->status = FREE;
+
+
+	//Coalesce nodes.
+	next = list_entry(found->list.next, struct vaddr_reg, list);
+	prev = list_entry(found->list.prev, struct vaddr_reg, list);
+
+	if(next->page_addr != page && next->status == FREE){
+		list_del(found->list.next);
+		found->size += next->size;
+		kfree(next);
+	}
+	if(prev->page_addr != page && prev->status == FREE){
+        found->page_addr = prev->page_addr;
+		list_del(found->list.prev);
+		found->size += prev->size;
+		kfree(prev);
+	}
+
+}
+
+uintptr_t  allocate(struct list_head * head_list, u64 size){
+	struct vaddr_reg *cur, *node_to_consume, *new_node;
+	u64 current_size;
+	node_to_consume = NULL;
+	list_for_each_entry(cur, head_list, list){
+		if(cur->status == FREE && cur->size >= size){
+			node_to_consume = cur;
+			break;
+		}
+	}
+	if(node_to_consume == NULL){
+		return -1;
+	}
+
+	printk("Node to break apart: %p\n", (void *)node_to_consume->page_addr);
+	node_to_consume->status = ALLOCATED;
+	if(node_to_consume->size == size){
+		return node_to_consume->page_addr;
+	}
+
+	current_size = node_to_consume->size;
+	current_size -= size;
+	new_node = (struct vaddr_reg*)kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
+	INIT_LIST_HEAD(&(new_node->list));
+	list_add(&(new_node->list), &(node_to_consume->list));
+	new_node->size = current_size;
+	new_node->page_addr = node_to_consume->page_addr + (size << PAGE_POWER_4KB);
+	new_node->status = FREE;
+
+	node_to_consume->size = size;
+	return node_to_consume->page_addr;
+}
+
+void print_bits(u64 * num){
+    u64 current_bit = 1;
+    int i = 0;
+    for(i = 0; i < 64; i++){
+        printk("%1d", (int)((*num) & current_bit) >> (i));
+        current_bit = current_bit << 1;
+    }
 }

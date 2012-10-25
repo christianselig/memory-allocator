@@ -17,5 +17,5 @@ all:
 	$(MAKE) -C $(LINUX_KERN) M=$(PWD) modules
 
 clean:
-	$(MAKE) -C $(LINUX_KERN) M=$(PWD) clean
+	$(MAKE) -Wformat -C $(LINUX_KERN) M=$(PWD) clean
 

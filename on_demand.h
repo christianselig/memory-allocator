@@ -8,22 +8,21 @@
 
 #include <linux/module.h>
 #include <linux/list.h>
-
 #include "swap.h"
-
+#define ALLOCATED 0
+#define PHYSICALLY_ALLOCATED 1
 struct vaddr_reg {
-	//	Use the kernel's linked list type
+   /* You can use this to demarcate virtual address allocations */
+	u8 status;
+    u8 physical;
+	u64 size;
+	u64 page_addr;
 	struct list_head list;
-	//	Region start address
-	u64 start;
-	//	The length of this region
-	u64 length;
-	//	Is the region free or not
-	char free;
 };
 
 struct mem_map {
-	struct vaddr_reg* memory;
+   /* Add your own state here */
+	struct list_head memory_allocations;
 };
 
 
@@ -38,5 +37,8 @@ void petmem_dump_vspace(struct mem_map * map);
 
 // How do we get error codes??
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code);
+void print_bits(u64* num);
+void free_address(struct list_head * head_list, u64 page);
 
+uintptr_t allocate(struct list_head * head_list, u64 size);
 #endif
