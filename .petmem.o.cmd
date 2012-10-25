@@ -1,0 +1,1 @@
+cmd_/home/sean/Desktop/petmem/petmem.o := ld -m elf_x86_64   -r -o /home/sean/Desktop/petmem/petmem.o /home/sean/Desktop/petmem/main.o /home/sean/Desktop/petmem/swap.o /home/sean/Desktop/petmem/buddy.o /home/sean/Desktop/petmem/file_io.o /home/sean/Desktop/petmem/on_demand.o 

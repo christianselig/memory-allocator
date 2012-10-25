@@ -1,0 +1,1 @@
+cmd_/home/sean/Desktop/petmem/petmem.ko := ld -r -m elf_x86_64 -T /usr/src/kernels/2.6.38.6-26.rc1.fc15.x86_64/scripts/module-common.lds --build-id  -o /home/sean/Desktop/petmem/petmem.ko /home/sean/Desktop/petmem/petmem.o /home/sean/Desktop/petmem/petmem.mod.o
