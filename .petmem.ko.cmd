@@ -1,1 +1,0 @@
-cmd_/home/sean/Desktop/petmem2/memory-allocator/petmem.ko := ld -r -m elf_x86_64 -T /usr/src/kernels/2.6.38.6-26.rc1.fc15.x86_64/scripts/module-common.lds --build-id  -o /home/sean/Desktop/petmem2/memory-allocator/petmem.ko /home/sean/Desktop/petmem2/memory-allocator/petmem.o /home/sean/Desktop/petmem2/memory-allocator/petmem.mod.o
