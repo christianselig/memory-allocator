@@ -62,7 +62,7 @@ uintptr_t petmem_alloc_vspace(struct mem_map * map, u64 num_pages) {
 	//	We allocate in 4KB chunks
 	num_pages = num_pages * PAGE_SIZE_4KB;
 
-	printk("Memory allocation for %lld pages\n", num_pages);
+	printk("Memory al for %lld pages\n", num_pages);
 
 	//	Start searching for free pages at the beginning of the
 	//	memory map. If we can't find any free space... well...
@@ -108,7 +108,7 @@ uintptr_t petmem_alloc_vspace(struct mem_map * map, u64 num_pages) {
 			}
 		}
 	}
-	printk("--> petmem_alloc_vspace: Returning address %lld\n", address);
+	printk("--> petmem_alloc_vspace: Returning address %lx\n", address);
 	return address;
 }
 
@@ -130,7 +130,7 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
 	struct vaddr_reg *next_entry;
 	struct vaddr_reg *prev_entry;
 
-	printk("Attempting to free address %lld\n", vaddr);
+	printk("Attempting to free address %lx\n", vaddr);
 
 	list_for_each(ptr, &(map->memory->list)) {
 		entry = list_entry(ptr, struct vaddr_reg, list);
@@ -156,15 +156,25 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
 }
 
 /*
-   error_code:
-       1 == not present
-       2 == permissions error
-*/
+ * Though this does use pte64_t, it works with
+ * all types of 64, but there is no general one.
+ */
+void handle_table_memory(void * mem){
+    int i;
+    uintptr_t temp;
+    pte64_t * handle = (pte64_t *)mem;
+	temp = (uintptr_t)__va(petmem_alloc_pages(1));
+    printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
+	for(i = 0; i < 512; i++) {
+		memcpy((void *)temp + (i * 8), handle, 8);
+	}
+	handle->present = 1;
+	handle->page_base_addr = PAGE_TO_BASE_ADDR( __pa(temp ));
+}
 
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code) {
 
 	//	We'll need this if we want to allocate pages later
-	uintptr_t temp;
 	pml4e64_t * cr3;
 	pdpe64_t * pdp;
 	pde64_t * pde;
@@ -174,16 +184,16 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 	struct list_head *ptr;
 	struct vaddr_reg *entry;
 	struct vaddr_reg *next;
-
-	printk("Fault Address %lld\n", fault_addr);
-    printk("Fault addr 0x%lx\n", fault_addr);
+    printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
+    printk("Error code: %d\n", error_code);
+	printk("Fault Address 0x%012lx\n", fault_addr);
 
 	//	Find the virtual entry
 	list_for_each(ptr, &(map->memory->list)) {
 		entry = list_entry(ptr, struct vaddr_reg, list);
 		next = list_entry(ptr->next, struct vaddr_reg, list);
 		if(debug > 10) {
-			printk("Comparing = Start: %lld, Next: %lld, Address: %lld\n", entry->start, next->start, fault_addr);
+			printk("Comparing = Start: %lld, Next: %lld, Address: %lx\n", entry->start, next->start, fault_addr);
 		}
 		if(entry->start <= fault_addr && next->start > fault_addr) {
 			//	Found the entry!
@@ -198,55 +208,57 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 		printk("Start: %lld, End: %lld\n", start, end);
 	}
 
-	for(alloc_addr = start; alloc_addr < end; alloc_addr++) {
-		cr3 = (pml4e64_t *)__va( CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( alloc_addr ) * 8 );
-		if(!cr3->present) {
-			printk("--> petmem_handle_pagefault: PML level not present; allocating...\n");
-			temp = petmem_alloc_pages(1);
-			for(i = 0; i < MAX_PML4E64_ENTRIES; i++) {
-				memcpy(__va(temp) + (i * 8), cr3, 8);
-			}
-			cr3->present = 1;
-			cr3->pdp_base_addr = PAGE_TO_BASE_ADDR( temp );
-			printk("--> petmem_handle_pagefault: Added to cr3: %p\n", cr3->pdp_base_addr);
-		}
-        printk("Found pdp at location: %016lx\n",cr3->pdp_base_addr );
-		pdp = __va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + PDPE64_INDEX( alloc_addr ) * 8 );
-		if(!pdp->present) {
-			printk("--> petmem_handle_pagefault: PDP not present; allocating...\n");
-			temp = petmem_alloc_pages(1);
-			for(i = 0; i < MAX_PDPE64_ENTRIES; i++) {
-				memcpy(__va(temp) + (i * 8), pdp, 8);
-			}
-			pdp->present = 1;
-			pdp->pd_base_addr = PAGE_TO_BASE_ADDR( temp );
-			printk("--> petmem_handle_pagefault: Added to pdp: %p\n", pdp->pd_base_addr);
-		}
-        printk("Found pd at location: %016lx\n",pdp->pd_base_addr );
-		pde = __va( BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( alloc_addr )* 8 );
-		if(!pde->present) {
-			printk("--> petmem_handle_pagefault: PDE not present; allocating...\n");
-			temp = petmem_alloc_pages(1);
-			for(i = 0; i < MAX_PDE64_ENTRIES; i++) {
-				memcpy(__va(temp) + (i * 8), pde, 8);
-			}
-			pde->present = 1;
-			pde->pt_base_addr = PAGE_TO_BASE_ADDR( temp );
-			printk("--> petmem_handle_pagefault: Added to pde: %p\n", pde->pt_base_addr);
-		}
+    alloc_addr = fault_addr;
+    cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( alloc_addr ) * 8);
+    printk("\nCR3 FULL SUMMARY:\n");
+    printk("PML4 offset: %lld\n", PML4E64_INDEX(alloc_addr));
+    printk("PML4 index: %lld (0x%03x)\n", PML4E64_INDEX(alloc_addr) * 8, PML4E64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012lx\n", (CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( alloc_addr) * 8));
+    printk("Virtual Address: 0x%012lx\n", cr3);
+    if(!cr3->present) {
+        printk("Can't find the table! Allocating space now...\n");
+        handle_table_memory((void *)cr3);
+    }
+    printk("Page address to next level from cr3 : 0x%012lx\n", cr3->pdp_base_addr);
+    printk("\nPDP FULL SUMMARY:\n");
+    printk("PDP offset: %lld\n", PDPE64_INDEX(alloc_addr));
+    printk("PDP index: %lld (0x%03x)\n", PDPE64_INDEX(alloc_addr) * 8, PDPE64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(cr3->pdp_base_addr) + PDPE64_INDEX( alloc_addr) * 8));
+    pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( alloc_addr ) * 8)) ;
+    printk("Virtual Address: 0x%012lx\n", pdp);
+    if(!pdp->present) {
+        printk("Can't find the table! Allocating space now...\n");
+        handle_table_memory((void *) pdp);
+        pdp->present = 1;
+    }
+    printk("Page address to next level from pdp : 0x%012lx\n", pdp->pd_base_addr);
+    printk("\nPDE FULL SUMMARY:\n");
+    printk("PDE offset: %lld\n", PDE64_INDEX(alloc_addr));
+    printk("PDE index: %lld (0x%03x)\n", PDE64_INDEX(alloc_addr) * 8, PDE64_INDEX(alloc_addr) * 8);
 
-        printk("Found pte at location: %016lx\n",pde->pt_base_addr );
-		pte = __va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( alloc_addr ) * 8 );
-		if(!pte->present) {
-			printk("--> petmem_handle_pagefault: PTE not present; allocating...\n");
-			temp = petmem_alloc_pages(1);
-			for(i = 0; i < MAX_PTE64_ENTRIES; i++) {
-				memcpy(__va(temp) + (i * 8), pte, 8);
-			}
-			pte->present = 1;
-			pte->page_base_addr = PAGE_TO_BASE_ADDR( temp );
-			printk("--> petmem_handle_pagefault: Added to pte: %p\n", pte->page_base_addr);
-		}
-	}
+
+    printk("Hmmm...what is the PDE index? %lld\n", PDE64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(pdp->pd_base_addr) + PDE64_INDEX( alloc_addr) * 8));
+    pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( alloc_addr )* 8);
+    printk("Virtual Address: 0x%012lx\n", pde);
+    if(!pde->present) {
+        printk("Can't find the table! Allocating space now...\n");
+        handle_table_memory((void *) pde);
+        pde->present = 1;
+    }
+
+    printk("Page address to next level from pde : 0x%012lx\n", pde->pt_base_addr);
+    printk("\nPTE FULL SUMMARY:\n");
+    printk("PTE offset: %lld\n", PTE64_INDEX(alloc_addr));
+    printk("PTE index: %lld (0x%03x)\n", PTE64_INDEX(alloc_addr) * 8, PTE64_INDEX(alloc_addr) * 8);
+    printk("The Physical Address:0x%012lx\n", (BASE_TO_PAGE_ADDR(pde->pt_base_addr) + PTE64_INDEX( alloc_addr) * 8));
+    pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( alloc_addr ) * 8 );
+    printk("Virtual Address: 0x%012lx\n", pte);
+    if(!pte->present) {
+        printk("Can't find the allocated! Allocating space now...\n");
+        handle_table_memory((void *) pte);
+        pte->present = 1;
+    }
+    printk("Memory at this : 0x%012lx\n", pte->page_base_addr);
     return 0;
 }

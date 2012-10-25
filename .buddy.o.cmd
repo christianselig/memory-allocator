@@ -1,8 +1,8 @@
-cmd_/home/sean/Desktop/petmem/buddy.o := gcc -Wp,-MD,/home/sean/Desktop/petmem/.buddy.o.d  -nostdinc -isystem /usr/lib/gcc/x86_64-redhat-linux/4.6.0/include -I/usr/src/kernels/2.6.38.6-26.rc1.fc15.x86_64/arch/x86/include -Iinclude  -include include/generated/autoconf.h -D__KERNEL__ -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -Werror-implicit-function-declaration -Wno-format-security -fno-delete-null-pointer-checks -Os -m64 -mtune=generic -mno-red-zone -mcmodel=kernel -funit-at-a-time -maccumulate-outgoing-args -fstack-protector -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_FXSAVEQ=1 -pipe -Wno-sign-compare -fno-asynchronous-unwind-tables -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -Wframe-larger-than=2048 -fno-omit-frame-pointer -fno-optimize-sibling-calls -g -pg -Wdeclaration-after-statement -Wno-pointer-sign -fno-strict-overflow -fconserve-stack -DCC_HAVE_ASM_GOTO -DMODULE=1 -D__KERNEL__=1  -DMODULE  -D"KBUILD_STR(s)=\#s" -D"KBUILD_BASENAME=KBUILD_STR(buddy)"  -D"KBUILD_MODNAME=KBUILD_STR(petmem)" -c -o /home/sean/Desktop/petmem/buddy.o /home/sean/Desktop/petmem/buddy.c
+cmd_/home/sean/Desktop/petmem2/memory-allocator/buddy.o := gcc -Wp,-MD,/home/sean/Desktop/petmem2/memory-allocator/.buddy.o.d  -nostdinc -isystem /usr/lib/gcc/x86_64-redhat-linux/4.6.0/include -I/usr/src/kernels/2.6.38.6-26.rc1.fc15.x86_64/arch/x86/include -Iinclude  -include include/generated/autoconf.h -D__KERNEL__ -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -Werror-implicit-function-declaration -Wno-format-security -fno-delete-null-pointer-checks -Os -m64 -mtune=generic -mno-red-zone -mcmodel=kernel -funit-at-a-time -maccumulate-outgoing-args -fstack-protector -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_FXSAVEQ=1 -pipe -Wno-sign-compare -fno-asynchronous-unwind-tables -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -Wframe-larger-than=2048 -fno-omit-frame-pointer -fno-optimize-sibling-calls -g -pg -Wdeclaration-after-statement -Wno-pointer-sign -fno-strict-overflow -fconserve-stack -DCC_HAVE_ASM_GOTO -DMODULE=1 -D__KERNEL__=1  -DMODULE  -D"KBUILD_STR(s)=\#s" -D"KBUILD_BASENAME=KBUILD_STR(buddy)"  -D"KBUILD_MODNAME=KBUILD_STR(petmem)" -c -o /home/sean/Desktop/petmem2/memory-allocator/buddy.o /home/sean/Desktop/petmem2/memory-allocator/buddy.c
 
-source_/home/sean/Desktop/petmem/buddy.o := /home/sean/Desktop/petmem/buddy.c
+source_/home/sean/Desktop/petmem2/memory-allocator/buddy.o := /home/sean/Desktop/petmem2/memory-allocator/buddy.c
 
-deps_/home/sean/Desktop/petmem/buddy.o := \
+deps_/home/sean/Desktop/petmem2/memory-allocator/buddy.o := \
   include/linux/module.h \
     $(wildcard include/config/symbol/prefix.h) \
     $(wildcard include/config/sysfs.h) \
@@ -474,8 +474,8 @@ deps_/home/sean/Desktop/petmem/buddy.o := \
     $(wildcard include/config/slub/debug.h) \
   include/linux/kmemleak.h \
     $(wildcard include/config/debug/kmemleak.h) \
-  /home/sean/Desktop/petmem/buddy.h \
+  /home/sean/Desktop/petmem2/memory-allocator/buddy.h \
 
-/home/sean/Desktop/petmem/buddy.o: $(deps_/home/sean/Desktop/petmem/buddy.o)
+/home/sean/Desktop/petmem2/memory-allocator/buddy.o: $(deps_/home/sean/Desktop/petmem2/memory-allocator/buddy.o)
 
-$(deps_/home/sean/Desktop/petmem/buddy.o):
+$(deps_/home/sean/Desktop/petmem2/memory-allocator/buddy.o):
