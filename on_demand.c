@@ -53,6 +53,15 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
 }
 
 /*
+ * petmem_free_pspace
+ * descrip: Removes any real physical backings to an address.
+ *
+ */
+void petmem_free_pspace(uintptr_t vaddr){
+
+}
+
+/*
  * Though this does use pte64_t, it works with
  * all types of 64, but there is no general one.
  */
@@ -65,47 +74,24 @@ void handle_table_memory(void * mem){
 	for(i = 0; i < 512; i++) {
 		memcpy((void *)temp + (i * 8), handle, 8);
 	}
+    //screw it, other way didn't copy permissions, must set them!
+    memset((void *)temp, 0, 512*8);
 	handle->present = 1;
 	handle->page_base_addr = PAGE_TO_BASE_ADDR( __pa(temp ));
 }
 
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code) {
-
-	//	We'll need this if we want to allocate pages later
 	pml4e64_t * cr3;
 	pdpe64_t * pdp;
 	pde64_t * pde;
 	pte64_t * pte;
-    uintptr_t alloc_addr;
-    printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
-    printk("Error code: %d\n", error_code);
-	printk("Fault Address 0x%012lx\n", fault_addr);
-
-    alloc_addr = fault_addr;
-    cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( alloc_addr ) * 8);
-    printk("\nCR3 FULL SUMMARY:\n");
-    printk("PML4 offset: %lld\n", PML4E64_INDEX(alloc_addr));
-    printk("PML4 index: %lld (0x%03x)\n", PML4E64_INDEX(alloc_addr) * 8, (int)PML4E64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012llx\n", (CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( alloc_addr) * 8));
-    printk("Virtual Address: 0x%012lx\n", (long unsigned int)cr3);
-    print_bits((u64 *)cr3);
-    printk("\n of bits...");
+    cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( fault_addr ) * 8);
     if(!cr3->present) {
-        printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *)cr3);
     }
-    printk("Page address to next level from cr3 : 0x%012lx\n", (long unsigned int)cr3->pdp_base_addr);
-    printk("\nPDP FULL SUMMARY:\n");
-    printk("PDP offset: %lld\n", PDPE64_INDEX(alloc_addr));
-    printk("PDP index: %lld (0x%03x)\n", PDPE64_INDEX(alloc_addr) * 8, (int)PDPE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(cr3->pdp_base_addr) + PDPE64_INDEX( alloc_addr) * 8));
-    pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( alloc_addr ) * 8)) ;
-    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pdp);
-    printk("Number of bits...\n");
-    print_bits((u64 *)pdp);
-    printk("\n");
+
+    pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( fault_addr ) * 8)) ;
     if(!pdp->present) {
-        printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *) pdp);
         pdp->present = 1;
         pdp->writable = 1;
@@ -113,41 +99,52 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 
     }
 
-    printk("Page address to next level from pdp : 0x%012lx\n", (long unsigned int)pdp->pd_base_addr);
-    printk("\nPDE FULL SUMMARY:\n");
-    printk("PDE offset: %lld\n", PDE64_INDEX(alloc_addr));
-    printk("PDE index: %lld (0x%03x)\n", PDE64_INDEX(alloc_addr) * 8, (int)PDE64_INDEX(alloc_addr) * 8);
-
-
-    printk("Hmmm...what is the PDE index? %lld\n", PDE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pdp->pd_base_addr) + PDE64_INDEX( alloc_addr) * 8));
-    pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( alloc_addr )* 8);
-    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pde);
+    pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( fault_addr )* 8);
     if(!pde->present) {
-        printk("Can't find the table! Allocating space now...\n");
         handle_table_memory((void *) pde);
         pde->present = 1;
         pde->writable = 1;
+        pde->user_page = 1;
     }
-    pde->pt_base_addr = 0x1f;
 
-    printk("Page address to next level from pde : 0x%012lx\n", (long unsigned int)pde->pt_base_addr);
-    printk("\nPTE FULL SUMMARY:\n");
-    printk("PTE offset: %lld\n", PTE64_INDEX(alloc_addr));
-    printk("PTE index: %lld (0x%03x)\n", PTE64_INDEX(alloc_addr) * 8, (int)PTE64_INDEX(alloc_addr) * 8);
-    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pde->pt_base_addr) + PTE64_INDEX( alloc_addr) * 8));
-    pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( alloc_addr ) * 8 );
-    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pte);
+    pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( fault_addr ) * 8 );
+
     if(!pte->present) {
-        printk("Can't find the allocated! Allocating space now...\n");
         handle_table_memory((void *) pte);
         pte->present = 1;
+        pte->writable = 1;
+        pte->user_page =1;
     }
-    pte->writable = 1;
-    printk("Bits set...");
-    print_bits((u64 *)(pte));
+#ifdef DEBUG
+    printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
+    printk("Error code: %d\n", error_code);
+	printk("Fault Address 0x%012lx\n", fault_addr);
 
+    printk("\nCR3 FULL SUMMARY:\n");
+    printk("PML4 offset: %lld\n", PML4E64_INDEX(fault_addr));
+    printk("PML4 index: %lld (0x%03x)\n", PML4E64_INDEX(fault_addr) * 8, (int)PML4E64_INDEX(fault_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (CR3_TO_PML4E64_PA( get_cr3() ) + PML4E64_INDEX( fault_addr) * 8));
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)cr3);
+    printk("Page address to next level from cr3 : 0x%012lx\n", (long unsigned int)cr3->pdp_base_addr);
+    printk("\nPDP FULL SUMMARY:\n");
+    printk("PDP offset: %lld\n", PDPE64_INDEX(fault_addr));
+    printk("PDP index: %lld (0x%03x)\n", PDPE64_INDEX(fault_addr) * 8, (int)PDPE64_INDEX(fault_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(cr3->pdp_base_addr) + PDPE64_INDEX( fault_addr) * 8));
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pdp);
+    printk("Page address to next level from pdp : 0x%012lx\n", (long unsigned int)pdp->pd_base_addr);
+    printk("\nPDE FULL SUMMARY:\n");
+    printk("PDE offset: %lld\n", PDE64_INDEX(fault_addr));
+    printk("PDE index: %lld (0x%03x)\n", PDE64_INDEX(fault_addr) * 8, (int)PDE64_INDEX(fault_addr) * 8);
+    printk("Hmmm...what is the PDE index? %lld\n", PDE64_INDEX(fault_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pdp->pd_base_addr) + PDE64_INDEX( fault_addr) * 8));   printk("Virtual Address: 0x%012lx\n", (long unsigned int)pde);
+    printk("Page address to next level from pde : 0x%012lx\n", (long unsigned int)pde->pt_base_addr);
+    printk("\nPTE FULL SUMMARY:\n");
+    printk("PTE offset: %lld\n", PTE64_INDEX(fault_addr));
+    printk("PTE index: %lld (0x%03x)\n", PTE64_INDEX(fault_addr) * 8, (int)PTE64_INDEX(fault_addr) * 8);
+    printk("The Physical Address:0x%012llx\n", (BASE_TO_PAGE_ADDR(pde->pt_base_addr) + PTE64_INDEX( fault_addr) * 8));
+    printk("Virtual Address: 0x%012lx\n", (long unsigned int)pte);
     printk("Memory at this : 0x%012lx\n", (long unsigned int)pte->page_base_addr);
+#endif
     return 0;
 }
 
