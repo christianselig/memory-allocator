@@ -37,6 +37,7 @@ void petmem_deinit_process(struct mem_map * map) {
 	list_for_each_safe(pos, next, &(map->memory_allocations)){
 		entry = list_entry(pos, struct vaddr_reg, list);
         attempt_free_physical_address(entry->page_addr);
+        invlpg(entry->page_addr);
 		list_del(pos);
 		kfree(entry);
 	}
@@ -225,7 +226,6 @@ void attempt_free_physical_address(uintptr_t address){
     cr3->pdp_base_addr = 0;
     cr3->user_page = 0;
     cr3->writable = 0;
-
 }
 int is_entire_page_free(void * page_structure){
     int i = 0;
@@ -241,6 +241,7 @@ int is_entire_page_free(void * page_structure){
 
 void free_address(struct list_head * head_list, u64 page){
 	struct vaddr_reg * cur, * found, *next, *prev;
+    int i;
 	found = NULL;
 	list_for_each_entry(cur ,head_list, list){
 		if(cur->page_addr == page){
@@ -254,7 +255,10 @@ void free_address(struct list_head * head_list, u64 page){
     attempt_free_physical_address(found->page_addr);
 	//Set the clear values.
 	found->status = FREE;
+    for(i = 0; i < found->size; i++){
 
+        invlpg(found->page_addr + (i * 4096));
+    }
 
 	//Coalesce nodes.
 	next = list_entry(found->list.next, struct vaddr_reg, list);
