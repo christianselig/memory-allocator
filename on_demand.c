@@ -81,6 +81,7 @@ void handle_table_memory(void * mem){
     printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
    //screw it, other way didn't copy permissions, must set them!
     memset((void *)temp, 0, 512*8);
+    is_entire_page_free(temp);
 	handle->present = 1;
 	handle->page_base_addr = PAGE_TO_BASE_ADDR( __pa(temp ));
 }
@@ -196,7 +197,9 @@ void attempt_free_physical_address(uintptr_t address){
     pte->user_page = 0;
     pte->present = 0;
     pte->page_base_addr = 0;
+    invlpg(pte_table);
     if(is_entire_page_free((void *)pte_table) == PAGE_NOT_IN_USE){
+        printk("Freeing pte table\n");
        petmem_free_pages((uintptr_t)pte_table, 1);
     }
     else{
@@ -207,6 +210,7 @@ void attempt_free_physical_address(uintptr_t address){
     pde->present = 0;
     pde->pt_base_addr = 0;
     if(is_entire_page_free((void *)pde_table) == PAGE_NOT_IN_USE){
+        printk("Freeing pde table\n");
        petmem_free_pages((uintptr_t)pde_table, 1);
     }
     else{
@@ -217,6 +221,7 @@ void attempt_free_physical_address(uintptr_t address){
     pdp->present = 0;
     pdp->pd_base_addr = 0;
     if(is_entire_page_free((void *)pdp_table) == PAGE_NOT_IN_USE){
+        printk("Freeing pdp table\n");
        petmem_free_pages((uintptr_t)pdp_table, 1);
     }
     else{
@@ -227,12 +232,14 @@ void attempt_free_physical_address(uintptr_t address){
     cr3->user_page = 0;
     cr3->writable = 0;
 }
+
 int is_entire_page_free(void * page_structure){
     int i = 0;
     for(i = 0; i < 512; i++){
         int offset = i * 8;
         pte64_t * page = (page_structure + offset);
         if(page->present == 1){
+            printk("Page index is: %d\n", i);
             return PAGE_IN_USE;
         }
     }
