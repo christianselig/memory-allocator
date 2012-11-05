@@ -160,78 +160,54 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
     return 0;
 }
 
-
 void attempt_free_physical_address(uintptr_t address){
- 	pml4e64_t * cr3;
-	pdpe64_t * pdp, *pdp_table;
-	pde64_t * pde, *pde_table;
-	pte64_t * pte, *pte_table;
+    pte64_t * tables[4];
+    pte64_t * entries[4];
     void * actual_mem;
+    int i;
     /* If one of them isn't there, we don't need to free any physical address because there is none.*/
-    cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( address ) * 8);
-    if(!cr3->present) {
+    entries[3] = (pte64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( address ) * 8);
+    tables[3] = (pte64_t *)(CR3_TO_PML4E64_VA(get_cr3()));
+    if(!entries[3]->present) {
         return;
     }
-    pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( address ) * 8)) ;
-    pdp_table = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr )) ;
-    if(!pdp->present) {
-        return;
-    }
-
-    pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( address )* 8);
-    pde_table = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ));
-    if(!pde->present) {
+    entries[2] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[3]->page_base_addr ) + (PDPE64_INDEX( address ) * 8)) ;
+    tables[2] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[3]->page_base_addr )) ;
+    if(!entries[2]->present) {
         return;
     }
 
-    pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( address ) * 8 );
-    pte_table = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ));
-    if(!pte->present) {
+    entries[1] = (pte64_t *)__va(BASE_TO_PAGE_ADDR( entries[2]->page_base_addr ) + PDE64_INDEX( address )* 8);
+    tables[1] = (pte64_t *)__va(BASE_TO_PAGE_ADDR( entries[2]->page_base_addr ));
+    if(!entries[1]->present) {
         return;
     }
 
-    actual_mem = (void *)__va( BASE_TO_PAGE_ADDR( pte->page_base_addr ) + PHYSICAL_OFFSET( address ) );
+    entries[0] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[1]->page_base_addr ) + PTE64_INDEX( address ) * 8 );
+    tables[0] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[1]->page_base_addr ));
+    if(!entries[0]->present) {
+        return;
+    }
+
+    actual_mem = (void *)__va( BASE_TO_PAGE_ADDR( entries[0]->page_base_addr ) + PHYSICAL_OFFSET( address ) );
     petmem_free_pages((uintptr_t)actual_mem, 1);
-    // Chain free this stuff.
-    pte->writable = 0;
-    pte->user_page = 0;
-    pte->present = 0;
-    pte->page_base_addr = 0;
-    invlpg(pte_table);
-    if(is_entire_page_free((void *)pte_table) == PAGE_NOT_IN_USE){
-        printk("Freeing pte table\n");
-       petmem_free_pages((uintptr_t)pte_table, 1);
-    }
-    else{
-        return;
-    }
-    pde->writable = 0;
-    pde->user_page = 0;
-    pde->present = 0;
-    pde->pt_base_addr = 0;
-    if(is_entire_page_free((void *)pde_table) == PAGE_NOT_IN_USE){
-        printk("Freeing pde table\n");
-       petmem_free_pages((uintptr_t)pde_table, 1);
-    }
-    else{
-        return;
-    }
-    pdp->writable = 0;
-    pdp->user_page = 0;
-    pdp->present = 0;
-    pdp->pd_base_addr = 0;
-    if(is_entire_page_free((void *)pdp_table) == PAGE_NOT_IN_USE){
-        printk("Freeing pdp table\n");
-       petmem_free_pages((uintptr_t)pdp_table, 1);
-    }
-    else{
-        return;
-    }
-    cr3->present = 0;
-    cr3->pdp_base_addr = 0;
-    cr3->user_page = 0;
-    cr3->writable = 0;
-}
+    for(i = 0; i < 4; i++){
+        pte64_t * cur = entries[i];
+        cur->writable = 0;
+        cur->user_page = 0;
+        cur->present = 0;
+        cur->page_base_addr = 0;
+        invlpg((uintptr_t) cur);
+        if(is_entire_page_free((void *) tables[i]) == PAGE_NOT_IN_USE){
+            printk("Table %d is being freed\n", i+1);
+            petmem_free_pages((uintptr_t) tables[i], 1);
+            invlpg((uintptr_t) tables[i]);
+        }
+        else{
+            return;
+        }
+    }}
+
 
 int is_entire_page_free(void * page_structure){
     int i = 0;
