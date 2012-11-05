@@ -17,8 +17,6 @@ static int fd = 0;
 
 
 
-int faults = 0;
-
 void * pet_malloc(size_t size) {
     struct alloc_request req;
     memset(&req, 0, sizeof(struct alloc_request));
@@ -55,7 +53,7 @@ static void segv_handler(int signum, siginfo_t * info, void * context) {
 	return;
     }  
 
-    printf("SIGSEGV\n");
+    //    printf("SIGSEGV\n");
 
     // si_addr -> fault addr
 
@@ -75,7 +73,6 @@ static void segv_handler(int signum, siginfo_t * info, void * context) {
 	kill(getpid(), SIGSEGV);
     }
 
-    if (faults++ > 5) {exit(0);}
 }
 
 
