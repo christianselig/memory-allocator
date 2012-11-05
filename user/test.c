@@ -5,8 +5,8 @@
 #include "harness.h"
 
 
-/* A simple test program. 
- * You should modify this to perform additional checks 
+/* A simple test program.
+ * You should modify this to perform additional checks
  */
 
 int main(int argc, char ** argv) {
@@ -14,9 +14,13 @@ int main(int argc, char ** argv) {
 
     char * buf = NULL;
 
-    
 
-    buf = pet_malloc(8192);
+
+    while(1){
+
+    buf = pet_malloc(10);
+    buf[0] ='a';
+    }
 
     printf("Allocated buf at %p\n", buf);
 
@@ -44,6 +48,6 @@ int main(int argc, char ** argv) {
 
     printf("%s\n", (char *)(buf + 50));
 
-    
+
     return 0;
 }

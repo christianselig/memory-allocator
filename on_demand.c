@@ -39,8 +39,6 @@ void petmem_deinit_process(struct mem_map * map) {
 		entry = list_entry(pos, struct vaddr_reg, list);
         for(i = 0; i < entry->size; i++){
             attempt_free_physical_address(entry->page_addr + (4096*i));
-
-            invlpg(entry->page_addr + (4096*i));
         }
 		list_del(pos);
 		kfree(entry);
@@ -74,6 +72,9 @@ int handle_table_memory(void * mem){
     uintptr_t memory;
     pte64_t * handle = (pte64_t *)mem;
     memory = petmem_alloc_pages(1);
+    if(memory == 0){
+        return 1;
+    }
     temp = (uintptr_t)__va(memory);
     printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
    //screw it, other way didn't copy permissions, must set them!
