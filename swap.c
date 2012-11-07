@@ -3,7 +3,7 @@
  */
 
 #include <linux/slab.h>
-
+#include <linux/string.h>
 
 #include "file_io.h"
 #include "swap.h"
@@ -12,14 +12,16 @@
 
 struct swap_space * swap_init(u32 num_pages) {
     u32 pages, char_map_page_size;
+    int i;
     struct swap_space * swap = kmalloc(sizeof(struct swap_space), GFP_KERNEL);
     swap->swap_file = file_open("/tmp/cs2510.swap", O_RDWR);
     if(!(swap->swap_file)){
         //BIG PROBLEM!
-        return (struct swap_space * ) 0xDEADFEED;
+        return (struct swap_space * ) 0x0;
     }
     swap->size = file_size(swap->swap_file);
-    pages = swap->size >> POWER_4KB; // 4kb per page.
+    pages = swap->size >> POWER_4KB; // 4kb per page
+    swap->size = pages;
     char_map_page_size = pages >> BITS_IN_A_BYTE;
     if(char_map_page_size % BITS_IN_A_BYTE != 0){
         char_map_page_size += 1;
@@ -31,7 +33,11 @@ struct swap_space * swap_init(u32 num_pages) {
         swap->reserved_blocks += 1;
     }
     swap->alloc_map = kmalloc(char_map_page_size, GFP_KERNEL);
-    memset(swap->alloc_map, 0, char_map_page_size);
+    i = 0;
+    while(i < char_map_page_size){
+        swap->alloc_map[i] = 0;
+        i++;
+    }
     return swap;
 }
 
@@ -54,7 +60,7 @@ int check_bitmap(struct swap_space * swap, u32 index){
 }
 
 void put_value(struct swap_space * swap, u32 index, u8 value){
-    if(index < swap->size && index > swap->reserved_blocks){
+    if(index < swap->size && index >= swap->reserved_blocks){
          u32 byte_location, bit_location;
         char b;
         byte_location = index >> 3;
@@ -75,7 +81,8 @@ void swap_free(struct swap_space * swap) {
 
 
 int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
-    int i;
+    char * charz = swap->alloc_map;
+    //int i;
     /*
     for(i = swap->reserved_blocks + 1; i < swap->size; i++){
         if(check_bitmap(swap, i) == 0){
@@ -85,6 +92,7 @@ int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
     }
     */
     printk("Amount of pages %d\n", swap->reserved_blocks);
+    printk("Can hold %lld pages and 0 %d\n", swap->size, *(charz+2));
     return -1;
 }
 
