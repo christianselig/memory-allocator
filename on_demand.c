@@ -67,12 +67,15 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
  * Though this does use pte64_t, it works with
  * all types of 64, but there is no general one.
  */
-int handle_table_memory(void * mem){
+int handle_table_memory(void * mem, struct mem_map * map){
     uintptr_t temp;
     uintptr_t memory;
     pte64_t * handle = (pte64_t *)mem;
     memory = petmem_alloc_pages(1);
     if(memory == 0){
+        //TODO: Actually implement swapping out pages to make memory.
+        page_replacement_clock(map);
+        //TODO: Make Clock run here to choose the page to swap out.
         return 1;
     }
     temp = (uintptr_t)__va(memory);
@@ -84,6 +87,54 @@ int handle_table_memory(void * mem){
     return 0;
 }
 
+uintptr_t get_valid_page_entry(uintptr_t address){
+    pte64_t * entries[4];
+    /* If one of them isn't there, we don't need to free any physical address because there is none.*/
+    entries[3] = (pte64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( address ) * 8);
+    if(!entries[3]->present) {
+        return 0;
+    }
+    entries[2] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[3]->page_base_addr ) + (PDPE64_INDEX( address ) * 8)) ;
+    if(!entries[2]->present) {
+        return 0;
+    }
+
+    entries[1] = (pte64_t *)__va(BASE_TO_PAGE_ADDR( entries[2]->page_base_addr ) + PDE64_INDEX( address )* 8);
+    if(!entries[1]->present) {
+        return 0;
+    }
+
+    entries[0] = (pte64_t *)__va( BASE_TO_PAGE_ADDR( entries[1]->page_base_addr ) + PTE64_INDEX( address ) * 8 );
+    if(!entries[0]->present) {
+        return 0;
+    }
+    return (uintptr_t)entries[0];
+}
+
+void * page_replacement_clock(struct mem_map * map){
+    pte64_t * page;
+ 	struct list_head * pos, * next;
+	struct vaddr_reg *entry;
+    //Continuously cycle through the pages until a page is found to evict..
+    while(1){
+        list_for_each_safe(pos, next, (map->clock_hand)){
+            entry = list_entry(pos, struct vaddr_reg, list);
+            // The definition of 'valid' just means if it can traverse the page table
+            // and the entry is present.
+            page = (pte64_t *)get_valid_page_entry(entry->page_addr);
+            if(page && page->accessed){
+                page->accessed = 0;
+            }
+            else if(page){
+                map->clock_hand = next;
+                printk("FOUND A FUCKING PAGE!!!\n");
+                return (void *)page;
+            }
+
+        }
+    }
+
+}
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code) {
 	pml4e64_t * cr3;
 	pdpe64_t * pdp;
@@ -98,12 +149,12 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 
     cr3 = (pml4e64_t *) (CR3_TO_PML4E64_VA( get_cr3() ) + PML4E64_INDEX( fault_addr ) * 8);
     if(!cr3->present) {
-        bad_signal = handle_table_memory((void *)cr3);
+        bad_signal = handle_table_memory((void *)cr3, map);
     }
 
     pdp = (pdpe64_t *)__va( BASE_TO_PAGE_ADDR( cr3->pdp_base_addr ) + (PDPE64_INDEX( fault_addr ) * 8)) ;
     if(!pdp->present) {
-        bad_signal += handle_table_memory((void *) pdp);
+        bad_signal += handle_table_memory((void *) pdp, map);
         pdp->present = 1;
         pdp->writable = 1;
         pdp->user_page = 1;
@@ -112,7 +163,7 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 
     pde = (pde64_t *)__va(BASE_TO_PAGE_ADDR( pdp->pd_base_addr ) + PDE64_INDEX( fault_addr )* 8);
     if(!pde->present) {
-        bad_signal += handle_table_memory((void *) pde);
+        bad_signal += handle_table_memory((void *) pde, map);
         pde->present = 1;
         pde->writable = 1;
         pde->user_page = 1;
@@ -120,13 +171,16 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 
     pte = (pte64_t *)__va( BASE_TO_PAGE_ADDR( pde->pt_base_addr ) + PTE64_INDEX( fault_addr ) * 8 );
 
-    if(!pte->present) {
-
-       bad_signal += handle_table_memory((void *) pte);
-
+    // TODO: Check the dirty bit as well, to differentiate between compulsory vs swapped out.
+    if(!pte->present && !pte->dirty) {
+        bad_signal += handle_table_memory((void *) pte, map);
         pte->present = 1;
         pte->writable = 1;
         pte->user_page =1;
+    }
+    else if(!pte->present && pte->dirty){
+        //Swap out memory using page_address.
+
     }
 #ifdef DEBUG
     printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
