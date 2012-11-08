@@ -89,6 +89,7 @@ int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
 
 
 int swap_in_page(struct swap_space * swap, u32 index, void * dst_page) {
+    printk("Index is: %d", index);
     file_read(swap->swap_file, dst_page, 4096, index * 4096);
     put_value(swap, index, 0);
     return -1;
