@@ -16,7 +16,7 @@ int main(int argc, char ** argv) {
     char * real_buf = NULL;
 
     real_buf = pet_malloc(10);
-    real_buf[0] = 'a';
+    real_buf[0] = 'b';
     while(i < 60000){
 
         buf = pet_malloc(10);

@@ -16,6 +16,7 @@
 #define ERROR_PERMISSION 2
 #define NOT_VALID_RANGE 1
 #define ALLOCATED_ADDRESS_RANGE 2
+#define DEBUG 1
 
 struct mem_map * petmem_init_process(void) {
 	struct mem_map * new_proc;
@@ -209,10 +210,11 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
             clear_up_memory(map);
             space = (void * )petmem_alloc_pages(1);
         }
-        printk("Allocated space for new page.\n");
+        printk("Allocated space for new page. %lx\n", space);
         space = (void *)__va(space);
         memcpy(space, &page, PAGE_SIZE_BYTES);
         printk("SPACE\n");
+        printk("Should be a b: %c\n", space[0]);
         pte->present = 1;
         pte->writable = 1;
         pte->user_page = 1;
