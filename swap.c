@@ -26,12 +26,7 @@ struct swap_space * swap_init(u32 num_pages) {
     if(char_map_page_size % BITS_IN_A_BYTE != 0){
         char_map_page_size += 1;
     }
-    swap->reserved_blocks = (char_map_page_size >> POWER_4KB);
 
-    // Gotta get that last little block if it is there!
-    if(char_map_page_size % POWER_4KB != 0){
-        swap->reserved_blocks += 1;
-    }
     swap->alloc_map = kmalloc(char_map_page_size, GFP_KERNEL);
     file_read(swap->swap_file, (swap->alloc_map), char_map_page_size, 0);
 
@@ -45,7 +40,7 @@ struct swap_space * swap_init(u32 num_pages) {
  * Returns -1 if you tried to access reserved space or outside the bounds.
  */
 int check_bitmap(struct swap_space * swap, u32 index){
-    if(index < swap->size && index > swap->reserved_blocks){
+    if(index < swap->size){
         u32 byte_location, bit_location;
         char b;
         byte_location = index >> 3;
@@ -57,7 +52,7 @@ int check_bitmap(struct swap_space * swap, u32 index){
 }
 
 void put_value(struct swap_space * swap, u32 index, u8 value){
-    if(index < swap->size && index >= swap->reserved_blocks){
+    if(index < swap->size){
         u32 byte_location, bit_location;
         char b;
         byte_location = index >> 3;
@@ -78,7 +73,7 @@ void swap_free(struct swap_space * swap) {
 
 int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
     int i;
-    for(i = swap->reserved_blocks + 1; i < swap->size; i++){
+    for(i = 0; i < swap->size; i++){
         if(check_bitmap(swap, i) == 0){
             put_value(swap, i, 1);
             *index = i;

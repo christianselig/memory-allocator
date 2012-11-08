@@ -39,9 +39,10 @@ int handle_table_memory(void * mem, struct mem_map * map);
 void petmem_dump_vspace(struct mem_map * map);
 
 //Put page in the void *, return -1 if the page is not valid (FREE or not allocated).
-uintptr_t get_valid_page_entry(uintptr_t address);
+void clear_up_memory(struct mem_map * map);
 void * page_replacement_clock(struct mem_map * map,  void ** mem);
-// How do we get error codes??
+uintptr_t get_valid_page_entry(uintptr_t address);
+
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code);
 void print_bits(u64* num);
 void free_address(struct list_head * head_list, u64 page);

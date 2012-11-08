@@ -10,6 +10,7 @@
 #include "swap.h"
 
 #define PHYSICAL_OFFSET(x) (((u64)x) & 0xfff)
+#define PAGE_SIZE_BYTES 4096
 #define PAGE_IN_USE 1
 #define PAGE_NOT_IN_USE 2
 #define ERROR_PERMISSION 2
@@ -76,18 +77,8 @@ int handle_table_memory(void * mem, struct mem_map * map){
     pte64_t * handle = (pte64_t *)mem;
     memory = petmem_alloc_pages(1);
     if(memory == 0){
-        u32 index;
-        pte64_t * page_to_replace, * mem_location;
-        index = 0;
-        printk("GETTING SOME MO MEMZ\n");
-        page_to_replace = (pte64_t *)page_replacement_clock(map, (void **)&mem_location);
-        page_to_replace->present = 0;
-        page_to_replace->dirty = 1;
-        printk("Before the page was replaced...%lx\n", *mem_location);
-        swap_out_page(map->swap, &index, mem_location);
-        petmem_free_pages((uintptr_t)__pa(mem_location), 1);
-        page_to_replace->page_base_addr = index;
-        memory = petmem_alloc_pages(1);
+        clear_up_memory(map);
+       memory = petmem_alloc_pages(1);
     }
     temp = (uintptr_t)__va(memory);
     printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
@@ -148,6 +139,20 @@ void * page_replacement_clock(struct mem_map * map, void ** mem){
     }
 
 }
+
+void clear_up_memory(struct mem_map * map){
+    u32 index;
+    pte64_t * page_to_replace, * mem_location;
+    index = 0;
+    printk("GETTING SOME MO MEMZ\n");
+    page_to_replace = (pte64_t *)page_replacement_clock(map, (void **)&mem_location);
+    page_to_replace->present = 0;
+    page_to_replace->dirty = 1;
+    swap_out_page(map->swap, &index, mem_location);
+    petmem_free_pages((uintptr_t)__pa(mem_location), 1);
+    page_to_replace->page_base_addr = index;
+
+}
 int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 error_code) {
 	pml4e64_t * cr3;
 	pdpe64_t * pdp;
@@ -192,10 +197,28 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
         pte->user_page =1;
     }
     else if(!pte->present && pte->dirty){
+        pte64_t page;
+        void * space;
         //Swap out memory using page_address.
-        printk("YOU CHECKING DAT SWAP?\n");
-        return -1;
-
+        //Get some memory to stick with the swap page.
+        printk("Got here\n");
+        swap_in_page(map->swap, pte->page_base_addr ,(void *) &page);
+        printk("Swapped in the page\n");
+        space = (void *)petmem_alloc_pages(1);
+        if(space == 0){
+            clear_up_memory(map);
+            space = (void * )petmem_alloc_pages(1);
+        }
+        printk("Allocated space for new page.\n");
+        space = (void *)__va(space);
+        memcpy(space, &page, PAGE_SIZE_BYTES);
+        printk("SPACE\n");
+        pte->present = 1;
+        pte->writable = 1;
+        pte->user_page = 1;
+        pte->dirty = 0;
+        pte->page_base_addr = PAGE_TO_BASE_ADDR( __pa(space));
+        printk("Done.\n");
     }
 #ifdef DEBUG
     printk("~~~~~~~~~~~~~~~~~~~~~NEW PAGE FAULT!~~~~~~~~~~~~\n");
