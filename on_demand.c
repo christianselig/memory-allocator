@@ -198,12 +198,11 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
         pte->user_page =1;
     }
     else if(!pte->present && pte->dirty){
-        pte64_t page; //Reserve some temporary room for page.
+        void * page = kmalloc(4096,GFP_KERNEL);
         char * space;
         //Swap out memory using page_address.
         printk("Got here\n");
-        swap_in_page(map->swap, pte->page_base_addr ,(void *) &page);
-        return 1; // Get to this point and return sigsegv to blow up.
+        swap_in_page(map->swap, pte->page_base_addr , page);
         printk("Swapped in the page\n");
         space = (void *)petmem_alloc_pages(1);
         if(space == 0){
@@ -212,7 +211,8 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
         }
         printk("Allocated space for new page. %lx\n", space);
         space = (void *)__va(space);
-        memcpy(space, &page, PAGE_SIZE_BYTES);
+        memcpy(space, page, PAGE_SIZE_BYTES);
+        kfree(page);
         printk("SPACE\n");
         printk("Should be a b: %c\n", space[0]);
         pte->present = 1;
