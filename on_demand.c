@@ -199,7 +199,7 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
     }
     else if(!pte->present && pte->dirty){
         pte64_t page;
-        void * space;
+        char * space;
         //Swap out memory using page_address.
         //Get some memory to stick with the swap page.
         printk("Got here\n");
@@ -219,7 +219,8 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
         pte->writable = 1;
         pte->user_page = 1;
         pte->dirty = 0;
-        pte->page_base_addr = PAGE_TO_BASE_ADDR( __pa(space));
+        pte->page_base_addr = 0xDEADBEEF;
+        //pte->page_base_addr = PAGE_TO_BASE_ADDR( __pa(space));
         printk("Done.\n");
     }
 #ifdef DEBUG
