@@ -56,6 +56,7 @@ void petmem_free_pages(uintptr_t page_addr, u64 num_pages) {
 	if ((page_va >= tmp_pool->base_addr) &&
 	    (page_va < tmp_pool->base_addr + (0x1 << tmp_pool->pool_order))) {
 
+        printk("Actually freeing it.\n");
 	    buddy_free(tmp_pool, (void *)page_va, page_order);
 	    break;
 	}

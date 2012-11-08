@@ -8,11 +8,11 @@
 #include "file_io.h"
 #include "swap.h"
 #define POWER_4KB 12
-#define BITS_IN_A_BYTE 8
+#define BITS_IN_A_BYTE 3
+
 
 struct swap_space * swap_init(u32 num_pages) {
     u32 pages, char_map_page_size;
-    int i;
     struct swap_space * swap = kmalloc(sizeof(struct swap_space), GFP_KERNEL);
     swap->swap_file = file_open("/tmp/cs2510.swap", O_RDWR);
     if(!(swap->swap_file)){
@@ -33,11 +33,8 @@ struct swap_space * swap_init(u32 num_pages) {
         swap->reserved_blocks += 1;
     }
     swap->alloc_map = kmalloc(char_map_page_size, GFP_KERNEL);
-    i = 0;
-    while(i < char_map_page_size){
-        swap->alloc_map[i] = 0;
-        i++;
-    }
+    file_read(swap->swap_file, (swap->alloc_map), char_map_page_size, 0);
+
     return swap;
 }
 
@@ -61,7 +58,7 @@ int check_bitmap(struct swap_space * swap, u32 index){
 
 void put_value(struct swap_space * swap, u32 index, u8 value){
     if(index < swap->size && index >= swap->reserved_blocks){
-         u32 byte_location, bit_location;
+        u32 byte_location, bit_location;
         char b;
         byte_location = index >> 3;
         bit_location = index % 8;
@@ -69,7 +66,6 @@ void put_value(struct swap_space * swap, u32 index, u8 value){
         b &= ~(1 << bit_location);
         b |= value << bit_location;
         swap->alloc_map[byte_location] = b;
-        //file_write(swap->swap_file, &b, 1, byte_location);
     }
 }
 
@@ -81,18 +77,16 @@ void swap_free(struct swap_space * swap) {
 
 
 int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
-    char * charz = swap->alloc_map;
-    //int i;
-    /*
+    int i;
     for(i = swap->reserved_blocks + 1; i < swap->size; i++){
         if(check_bitmap(swap, i) == 0){
             put_value(swap, i, 1);
-            printk("I PUT IN %d", check_bitmap(swap, i));
+            *index = i;
+            file_write(swap->swap_file, page, 4096, i * 4096);
+            printk("FOUND DAT FILE AT %d\n", i);
+            break;
         }
     }
-    */
-    printk("Amount of pages %d\n", swap->reserved_blocks);
-    printk("Can hold %lld pages and 0 %d\n", swap->size, *(charz+2));
     return -1;
 }
 
@@ -100,6 +94,7 @@ int swap_out_page(struct swap_space * swap, u32 * index, void * page) {
 
 
 int swap_in_page(struct swap_space * swap, u32 index, void * dst_page) {
-
+    file_read(swap->swap_file, dst_page, 4096, index * 4096);
+    put_value(swap, index, 0);
     return -1;
 }

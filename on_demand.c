@@ -72,21 +72,22 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
  */
 int handle_table_memory(void * mem, struct mem_map * map){
     uintptr_t temp;
-    u32 index;
     uintptr_t memory;
     pte64_t * handle = (pte64_t *)mem;
     memory = petmem_alloc_pages(1);
     if(memory == 0){
-        pte64_t * page_to_replace;
-
-        //TODO: Actually implement swapping out pages to make memory.
+        u32 index;
+        pte64_t * page_to_replace, * mem_location;
+        index = 0;
         printk("GETTING SOME MO MEMZ\n");
-        page_to_replace = (pte64_t *)page_replacement_clock(map);
+        page_to_replace = (pte64_t *)page_replacement_clock(map, (void **)&mem_location);
         page_to_replace->present = 0;
         page_to_replace->dirty = 1;
-        //TODO: Make Clock run here to choose the page to swap out.
-        swap_out_page(map->swap, &index, 0);
-        return 1;
+        printk("Before the page was replaced...%lx\n", *mem_location);
+        swap_out_page(map->swap, &index, mem_location);
+        petmem_free_pages((uintptr_t)__pa(mem_location), 1);
+        page_to_replace->page_base_addr = index;
+        memory = petmem_alloc_pages(1);
     }
     temp = (uintptr_t)__va(memory);
     printk("Allocated virtual memory is: 0x%012lx, and its physical memory is:0x%012lx\n", temp, __pa(temp));
@@ -121,7 +122,7 @@ uintptr_t get_valid_page_entry(uintptr_t address){
     return (uintptr_t)entries[0];
 }
 
-void * page_replacement_clock(struct mem_map * map){
+void * page_replacement_clock(struct mem_map * map, void ** mem){
     pte64_t * page;
  	struct list_head * pos, * next;
 	struct vaddr_reg *entry;
@@ -139,6 +140,7 @@ void * page_replacement_clock(struct mem_map * map){
             else if(page){
                 map->clock_hand = next;
                 printk("FOUND A PAGE TO REPLACE!!!\n");
+                *mem = (__va( BASE_TO_PAGE_ADDR( page->page_base_addr ) + PHYSICAL_OFFSET( entry->page_addr ) ));
                 return (void *)page;
             }
 
@@ -152,8 +154,8 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
 	pde64_t * pde;
 	pte64_t * pte;
     int bad_signal = 0;
-
     int valid_range = check_address_range(map, fault_addr);
+    printk("Handling segfault\n");
     if(valid_range == NOT_VALID_RANGE|| error_code == ERROR_PERMISSION ){
         return -1;
     }
@@ -191,6 +193,8 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
     }
     else if(!pte->present && pte->dirty){
         //Swap out memory using page_address.
+        printk("YOU CHECKING DAT SWAP?\n");
+        return -1;
 
     }
 #ifdef DEBUG
