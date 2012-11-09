@@ -67,7 +67,9 @@ void put_value(struct swap_space * swap, u32 index, u8 value){
 
 
 void swap_free(struct swap_space * swap) {
-
+    file_close(swap->swap_file);
+    kfree(swap->alloc_map);
+    kfree(swap);
 }
 
 

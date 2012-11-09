@@ -40,6 +40,9 @@ void petmem_deinit_process(struct mem_map * map) {
 	struct list_head * pos, * next;
 	struct vaddr_reg *entry;
     int i;
+    //Frees up the swap space
+
+    swap_free(map->swap);
 	list_for_each_safe(pos, next, &(map->memory_allocations)){
 		entry = list_entry(pos, struct vaddr_reg, list);
         for(i = 0; i < entry->size; i++){
@@ -209,7 +212,7 @@ int petmem_handle_pagefault(struct mem_map * map, uintptr_t fault_addr, u32 erro
             clear_up_memory(map);
             space = (void * )petmem_alloc_pages(1);
         }
-        printk("Allocated space for new page. %lx\n", space);
+        printk("Allocated space for new page.\n");
         space = (void *)__va(space);
         memcpy(space, page, PAGE_SIZE_BYTES);
         kfree(page);
