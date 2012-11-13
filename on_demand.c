@@ -19,6 +19,7 @@
 struct mem_map * petmem_init_process(void) {
 	struct mem_map * new_proc;
 	struct vaddr_reg * first_node = (struct vaddr_reg *) kmalloc(sizeof(struct vaddr_reg), GFP_KERNEL);
+    struct swap_space * swaps = swap_init(0);
 	new_proc = (struct mem_map *)kmalloc(sizeof(struct mem_map), GFP_KERNEL);
 	INIT_LIST_HEAD(&(new_proc->memory_allocations));
 	first_node->status = FREE;
@@ -26,6 +27,8 @@ struct mem_map * petmem_init_process(void) {
 	first_node->page_addr = PETMEM_REGION_START;
 
 	INIT_LIST_HEAD(&(first_node->list));
+    new_proc->clock_hand = &(new_proc->memory_allocations);
+    new_proc->swap = swaps;
 	list_add(&(first_node->list), &(new_proc->memory_allocations));
     return new_proc;
 
@@ -69,13 +72,20 @@ void petmem_free_vspace(struct mem_map * map, uintptr_t vaddr) {
  */
 int handle_table_memory(void * mem, struct mem_map * map){
     uintptr_t temp;
+    u32 index;
     uintptr_t memory;
     pte64_t * handle = (pte64_t *)mem;
     memory = petmem_alloc_pages(1);
     if(memory == 0){
+        pte64_t * page_to_replace;
+
         //TODO: Actually implement swapping out pages to make memory.
-        page_replacement_clock(map);
+        printk("GETTING SOME MO MEMZ\n");
+        page_to_replace = (pte64_t *)page_replacement_clock(map);
+        page_to_replace->present = 0;
+        page_to_replace->dirty = 1;
         //TODO: Make Clock run here to choose the page to swap out.
+        swap_out_page(map->swap, &index, 0);
         return 1;
     }
     temp = (uintptr_t)__va(memory);
@@ -124,10 +134,11 @@ void * page_replacement_clock(struct mem_map * map){
             page = (pte64_t *)get_valid_page_entry(entry->page_addr);
             if(page && page->accessed){
                 page->accessed = 0;
+                printk("Found a page, but it gets a second chance. lucky bastard.\n");
             }
             else if(page){
                 map->clock_hand = next;
-                printk("FOUND A FUCKING PAGE!!!\n");
+                printk("FOUND A PAGE TO REPLACE!!!\n");
                 return (void *)page;
             }
 

@@ -23,6 +23,7 @@ struct mem_map {
    /* Add your own state here */
 	struct list_head memory_allocations;
     struct list_head * clock_hand;
+    struct swap_space * swap;
 };
 
 
